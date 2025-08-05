@@ -81,6 +81,10 @@ resource "azurerm_storage_container" "output" {
 }
 
 
+resource "azurerm_storage_container" "staging" {
+  name                  = "staging"
+  storage_account_name  = azurerm_storage_account.store_account.name
+}
 
 # DEFINIZIONE DELL'AZURE DATA FACTORY --------------------------------------------------------------
 

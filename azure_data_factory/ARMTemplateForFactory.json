@@ -17,7 +17,7 @@
     },
     "resources": [
         {
-            "name": "[concat(parameters('factoryName'), '/dataflow1')]",
+            "name": "[concat(parameters('factoryName'), '/DataFlowMovieDB')]",
             "type": "Microsoft.DataFactory/factories/dataflows",
             "apiVersion": "2018-06-01",
             "properties": {
@@ -29,7 +29,8 @@
                                 "referenceName": "InputMovieData",
                                 "type": "DatasetReference"
                             },
-                            "name": "source1"
+                            "name": "SorgenteDBMovie",
+                            "description": "Importo i dati da file sorgente csv"
                         }
                     ],
                     "sinks": [
@@ -38,15 +39,18 @@
                                 "referenceName": "StagingMovieData",
                                 "type": "DatasetReference"
                             },
-                            "name": "sink1"
+                            "name": "DestinazioneStaging",
+                            "description": "Esporto i dati su file di staging"
                         }
                     ],
                     "transformations": [
                         {
-                            "name": "filter1"
+                            "name": "SelezionaCampi",
+                            "description": "Seleziono le righe per la tabella di staging rinominando le colonne in italiano"
                         },
                         {
-                            "name": "select1"
+                            "name": "FiltroRating",
+                            "description": "Filtro le righe utilizzando la colonna \"Rating\" prendendo solo i titoli con valutazione > 7"
                         }
                     ],
                     "scriptLines": [
@@ -59,26 +63,26 @@
                         "     ),",
                         "     allowSchemaDrift: true,",
                         "     validateSchema: false,",
-                        "     ignoreNoFilesFound: false) ~> source1",
-                        "select1 filter(toInteger(Valutazione)>7) ~> filter1",
-                        "source1 select(mapColumn(",
+                        "     ignoreNoFilesFound: false) ~> SorgenteDBMovie",
+                        "FiltroRating select(mapColumn(",
                         "          Film = Title,",
                         "          Genere = genresgenregenre,",
                         "          Valutazione = Rating",
                         "     ),",
                         "     skipDuplicateMapInputs: true,",
-                        "     skipDuplicateMapOutputs: true) ~> select1",
-                        "filter1 sink(allowSchemaDrift: true,",
+                        "     skipDuplicateMapOutputs: true) ~> SelezionaCampi",
+                        "SorgenteDBMovie filter(toFloat(Rating)>7) ~> FiltroRating",
+                        "SelezionaCampi sink(allowSchemaDrift: true,",
                         "     validateSchema: false,",
-                        "     input(",
-                        "          Film as string,",
-                        "          Genere as string,",
-                        "          Valutazione as string",
-                        "     ),",
-                        "     partitionFileNames:['moviesDB_TRANSFORMED.csv'],",
+                        "     partitionFileNames:['transformed_movied.csv'],",
                         "     skipDuplicateMapInputs: true,",
                         "     skipDuplicateMapOutputs: true,",
-                        "     partitionBy('hash', 1)) ~> sink1"
+                        "     mapColumn(",
+                        "          Film,",
+                        "          Genere,",
+                        "          Valutazione",
+                        "     ),",
+                        "     partitionBy('hash', 1)) ~> DestinazioneStaging"
                     ]
                 }
             },
@@ -86,6 +90,140 @@
                 "[concat(variables('factoryId'), '/datasets/InputMovieData')]",
                 "[concat(variables('factoryId'), '/datasets/StagingMovieData')]"
             ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/PipelineMovieDBLoad')]",
+            "type": "Microsoft.DataFactory/factories/pipelines",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "activities": [
+                    {
+                        "name": "ETLDataflow",
+                        "type": "ExecuteDataFlow",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "dataflow": {
+                                "referenceName": "DataFlowMovieDB",
+                                "type": "DataFlowReference",
+                                "parameters": {},
+                                "datasetParameters": {
+                                    "SorgenteDBMovie": {},
+                                    "DestinazioneStaging": {}
+                                },
+                                "linkedServiceParameters": {}
+                            },
+                            "staging": {},
+                            "compute": {
+                                "coreCount": 8,
+                                "computeType": "General"
+                            },
+                            "traceLevel": "Fine",
+                            "preserve": [
+                                "Attributes"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "CopiaDatiOutput",
+                        "type": "Copy",
+                        "dependsOn": [
+                            {
+                                "activity": "ETLDataflow",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "source": {
+                                "type": "DelimitedTextSource",
+                                "storeSettings": {
+                                    "type": "AzureBlobStorageReadSettings",
+                                    "recursive": true,
+                                    "wildcardFileName": "*.csv",
+                                    "enablePartitionDiscovery": false
+                                },
+                                "formatSettings": {
+                                    "type": "DelimitedTextReadSettings"
+                                }
+                            },
+                            "sink": {
+                                "type": "DelimitedTextSink",
+                                "storeSettings": {
+                                    "type": "AzureBlobStorageWriteSettings"
+                                },
+                                "formatSettings": {
+                                    "type": "DelimitedTextWriteSettings",
+                                    "quoteAllText": true,
+                                    "fileExtension": ".csv"
+                                }
+                            },
+                            "enableStaging": false,
+                            "translator": {
+                                "type": "TabularTranslator",
+                                "typeConversion": true,
+                                "typeConversionSettings": {
+                                    "allowDataTruncation": true,
+                                    "treatBooleanAsNumber": false
+                                }
+                            }
+                        },
+                        "inputs": [
+                            {
+                                "referenceName": "StagingMovieData",
+                                "type": "DatasetReference",
+                                "parameters": {}
+                            }
+                        ],
+                        "outputs": [
+                            {
+                                "referenceName": "OutputMovieData",
+                                "type": "DatasetReference",
+                                "parameters": {}
+                            }
+                        ]
+                    }
+                ],
+                "policy": {
+                    "elapsedTimeMetric": {}
+                },
+                "annotations": [],
+                "lastPublishTime": "2025-08-02T14:21:27Z"
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/dataflows/DataFlowMovieDB')]",
+                "[concat(variables('factoryId'), '/datasets/StagingMovieData')]",
+                "[concat(variables('factoryId'), '/datasets/OutputMovieData')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/AzureBlobStorage1')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureBlobStorage",
+                "typeProperties": {
+                    "connectionString": "[parameters('AzureBlobStorage1_connectionString')]"
+                }
+            },
+            "dependsOn": []
         },
         {
             "name": "[concat(parameters('factoryName'), '/InputMovieData')]",
@@ -177,163 +315,17 @@
                 "typeProperties": {
                     "location": {
                         "type": "AzureBlobStorageLocation",
-                        "container": "input"
+                        "container": "staging"
                     },
                     "columnDelimiter": ",",
                     "escapeChar": "\\",
                     "firstRowAsHeader": true,
                     "quoteChar": "\""
                 },
-                "schema": [
-                    {
-                        "name": "Film",
-                        "type": "String"
-                    },
-                    {
-                        "name": "Genere",
-                        "type": "String"
-                    },
-                    {
-                        "name": "Valutazione",
-                        "type": "String"
-                    }
-                ]
+                "schema": []
             },
             "dependsOn": [
                 "[concat(variables('factoryId'), '/linkedServices/AzureBlobStorage1')]"
-            ]
-        },
-        {
-            "name": "[concat(parameters('factoryName'), '/AzureBlobStorage1')]",
-            "type": "Microsoft.DataFactory/factories/linkedServices",
-            "apiVersion": "2018-06-01",
-            "properties": {
-                "annotations": [],
-                "type": "AzureBlobStorage",
-                "typeProperties": {
-                    "connectionString": "[parameters('AzureBlobStorage1_connectionString')]"
-                }
-            },
-            "dependsOn": []
-        },
-        {
-            "name": "[concat(parameters('factoryName'), '/pipeline1')]",
-            "type": "Microsoft.DataFactory/factories/pipelines",
-            "apiVersion": "2018-06-01",
-            "properties": {
-                "activities": [
-                    {
-                        "name": "Data flow filter",
-                        "type": "ExecuteDataFlow",
-                        "dependsOn": [],
-                        "policy": {
-                            "timeout": "0.12:00:00",
-                            "retry": 0,
-                            "retryIntervalInSeconds": 30,
-                            "secureOutput": false,
-                            "secureInput": false
-                        },
-                        "userProperties": [],
-                        "typeProperties": {
-                            "dataflow": {
-                                "referenceName": "dataflow1",
-                                "type": "DataFlowReference",
-                                "parameters": {},
-                                "datasetParameters": {
-                                    "source1": {},
-                                    "sink1": {}
-                                }
-                            },
-                            "staging": {},
-                            "compute": {
-                                "coreCount": 8,
-                                "computeType": "General"
-                            },
-                            "traceLevel": "Fine",
-                            "preserve": [
-                                "Attributes"
-                            ]
-                        }
-                    },
-                    {
-                        "name": "Copy data",
-                        "type": "Copy",
-                        "dependsOn": [
-                            {
-                                "activity": "Data flow filter",
-                                "dependencyConditions": [
-                                    "Succeeded"
-                                ]
-                            }
-                        ],
-                        "policy": {
-                            "timeout": "0.12:00:00",
-                            "retry": 0,
-                            "retryIntervalInSeconds": 30,
-                            "secureOutput": false,
-                            "secureInput": false
-                        },
-                        "userProperties": [],
-                        "typeProperties": {
-                            "source": {
-                                "type": "DelimitedTextSource",
-                                "storeSettings": {
-                                    "type": "AzureBlobStorageReadSettings",
-                                    "recursive": true,
-                                    "wildcardFileName": "moviesDB_TRANSFORMED.csv",
-                                    "enablePartitionDiscovery": false
-                                },
-                                "formatSettings": {
-                                    "type": "DelimitedTextReadSettings"
-                                }
-                            },
-                            "sink": {
-                                "type": "DelimitedTextSink",
-                                "storeSettings": {
-                                    "type": "AzureBlobStorageWriteSettings"
-                                },
-                                "formatSettings": {
-                                    "type": "DelimitedTextWriteSettings",
-                                    "quoteAllText": true,
-                                    "fileExtension": ".csv"
-                                }
-                            },
-                            "enableStaging": false,
-                            "translator": {
-                                "type": "TabularTranslator",
-                                "typeConversion": true,
-                                "typeConversionSettings": {
-                                    "allowDataTruncation": true,
-                                    "treatBooleanAsNumber": false
-                                }
-                            }
-                        },
-                        "inputs": [
-                            {
-                                "referenceName": "StagingMovieData",
-                                "type": "DatasetReference",
-                                "parameters": {}
-                            }
-                        ],
-                        "outputs": [
-                            {
-                                "referenceName": "OutputMovieData",
-                                "type": "DatasetReference",
-                                "parameters": {}
-                            }
-                        ]
-                    }
-                ],
-                "policy": {
-                    "elapsedTimeMetric": {}
-                },
-                "annotations": [],
-                "lastPublishTime": "2025-08-02T14:21:27Z"
-            },
-            "dependsOn": [
-                "[concat(variables('factoryId'), '/dataflows/dataflow1')]",
-                "[concat(variables('factoryId'), '/datasets/StagingMovieData')]",
-                "[concat(variables('factoryId'), '/datasets/OutputMovieData')]"
             ]
         }
     ]
