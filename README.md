@@ -1,89 +1,128 @@
 
-# Progetto Pipeline Dati Cinematografica su Azure
+# 🎬 Azure Cinematic Data Pipeline Project
 
-Questo progetto implementa una pipeline di dati end-to-end su Azure per processare un dataset di film. La pipeline orchestra l'ingestione, la trasformazione e il caricamento dei dati utilizzando Azure Data Factory e Azure Blob Storage.
-
------
-
-## Scopo del Progetto
-
-La missione è trasformare un dataset grezzo di film, disomogeneo e contenente informazioni non filtrate, in un formato pulito, rilevante e pronto per l'analisi. La pipeline automatizza il processo di pulizia e arricchimento dei dati, garantendo che solo le informazioni di alta qualità (in questo caso, film con un'ottima valutazione) siano rese disponibili per applicazioni a valle, come piattaforme di streaming, dashboard di business intelligence o sistemi di raccomandazione.
-
-L'obiettivo è dimostrare la capacità di costruire un processo ETL (Extract, Transform, Load) robusto e scalabile in un ambiente cloud, gestendo la pulizia dei dati, la trasformazione della loro struttura e il loro caricamento in una destinazione finale.
+This project implements an end-to-end data pipeline on Azure to process a movie dataset. The pipeline orchestrates the ingestion, transformation, and loading of data using Azure Data Factory and Azure Blob Storage, with the entire infrastructure defined and managed via Terraform.
 
 -----
 
-## Architettura della Soluzione
+## 🎯 Project Goal
 
-Il flusso di lavoro è stato progettato seguendo un approccio a più fasi per garantire la separazione delle responsabilità, la tracciabilità e la robustezza del processo.
+The mission is to transform a raw, unfiltered movie dataset into a clean, relevant, and analysis-ready format. The pipeline automates the data cleansing and enrichment process, ensuring that only high-quality information (in this case, top-rated movies) is made available for downstream applications like streaming platforms, business intelligence dashboards, or recommendation systems.
+
+The objective is to demonstrate the ability to build a robust and scalable ETL (Extract, Transform, Load) process in a cloud environment, managing data cleansing, structural transformation, and final delivery.
+
+-----
+
+## 🏗️ Solution Architecture
+
+The workflow is designed with a multi-stage approach to ensure separation of concerns, traceability, and robustness.
 
 ```
-[Blob: input] ---> [ADF Pipeline: Fase 1 - Data Flow] ---> [Blob: staging] ---> [ADF Pipeline: Fase 2 - Copy Data] ---> [Blob: output]
+[Blob: input] ---> [ADF Pipeline: Step 1 - Data Flow] ---> [Blob: staging] ---> [ADF Pipeline: Step 2 - Copy Data] ---> [Blob: output]
 ```
 
-1.  **Ingestione (Input):** Il file CSV originale (`moviesDB.csv`) viene caricato nel container `input` di un Azure Blob Storage. Questa è la zona di atterraggio dei dati grezzi, che vengono mantenuti nel loro stato originale per garantire la riprocessabilità e l'auditing.
-2.  **Trasformazione (Data Flow):** Un'attività di **Data Flow** in Azure Data Factory (ADF) legge i dati grezzi ed esegue le seguenti trasformazioni in memoria:
-      * **Filtraggio:** Mantiene solo i record che soddisfano il criterio di business, ovvero film con una valutazione (`Rating`) superiore a 7 su 10.
-      * **Rimappatura (Mapping):** Converte i nomi delle colonne dall'inglese all'italiano per renderli più comprensibili per un pubblico italiano (`Title` -\> `Film`, `genresgenregenre` -\> `Genere`, `Rating` -\> `Valutazione`).
-3.  **Area di Sosta (Staging):** Il file trasformato (`transformed_movies.csv`) viene salvato nel container `staging`. Questa area funge da cuscinetto e contiene dati intermedi già puliti e validati, pronti per essere caricati nella destinazione finale.
-4.  **Caricamento Finale (Copy Data):** Un'attività di **Copy Data** preleva il file dall'area di staging e lo carica nel container `output`. Quest'ultima fase si occupa del trasferimento finale e della gestione dei metadati, assicurando che il dato arrivi a destinazione in modo affidabile.
+1.  **Ingestion (Input):** The original CSV file (`moviesDB.csv`) is uploaded to the `input` container in Azure Blob Storage. This is the landing zone for raw, immutable data.
+2.  **Transformation (Data Flow):** An **Azure Data Factory (ADF) Data Flow** reads the raw data, performs the following in-memory transformations, and writes the result to a staging area:
+      * **Filtering:** It keeps only records that meet the business criteria: movies with a `Rating` greater than 7 out of 10.
+      * **Remapping (Mapping):** It translates the column names from English to Italian for a target audience (`Title` -\> `Film`, `genresgenregenre` -\> `Genere`, `Rating` -\> `Valutazione`).
+3.  **Staging Area:** The transformed file (`transformed_movies.csv`) is saved in the `staging` container. This area acts as a buffer, holding clean and validated intermediate data, ready for final loading.
+4.  **Final Load (Copy Data):** A **Copy Data** activity retrieves the transformed file from the staging area and loads it into the final `output` container. This final step handles the data transfer and metadata preservation, ensuring reliable delivery.
 
 -----
 
-## Motivazioni delle Scelte (Decisioni Architetturali)
+## 💡 Architectural Decisions
 
-Ogni scelta tecnica è stata ponderata per rispondere a requisiti di efficienza, manutenibilità e professionalità.
+Every technical choice was made to meet requirements for efficiency, maintainability, and professionalism.
 
-  * **Uso di un'area di Staging:** È stata scelta un'architettura a tre container (`input`, `staging`, `output`) per implementare il principio della **Separation of Concerns**. Questo approccio è una best practice di data engineering perché:
-
-      * **Protegge i dati sorgente:** La cartella `input` rimane un archivio di dati grezzi e immutabili.
-      * **Semplifica il Debug:** Se si verifica un errore, è facile capire se il problema risiede nella trasformazione (analizzando l'output in `staging`) o nel caricamento finale.
-      * **Aumenta la Robustezza:** Previene il rischio di riprocessare dati già elaborati o di creare loop accidentali.
-
-  * **Data Flow per la Trasformazione:** La logica di filtro e rimappatura è stata affidata a un'attività di **Data Flow**. Questo strumento è stato preferito a una semplice `Copy Activity` per la sua capacità di gestire trasformazioni complesse in modo visuale e scalabile, sfruttando la potenza di un cluster Apache Spark gestito da Azure. Permette di incatenare più logiche di business (filtri, join, aggregazioni) in un unico flusso coerente.
-
-  * **Copy Activity per il Caricamento Finale:** Sebbene il Data Flow potesse scrivere direttamente nell'output, è stata aggiunta un'attività di **Copy Data** dedicata per il caricamento finale. Questa scelta è stata fatta per soddisfare letteralmente il requisito di "gestione dei metadati durante la copia", una funzionalità specifica e ottimizzata di questa attività, che è progettata per trasferimenti di dati massivi e affidabili.
+  * **Use of a Staging Area:** A three-container architecture (`input`, `staging`, `output`) was chosen to implement the **Separation of Concerns** principle. This is a data engineering best practice because it:
+      * **Protects Source Data:** The `input` folder remains an archive of raw, untouched data.
+      * **Simplifies Debugging:** If an error occurs, it's easy to determine whether the issue is in the transformation (by analyzing the `staging` output) or in the final load.
+      * **Increases Robustness:** It prevents the risk of reprocessing already processed data or creating accidental loops.
+  * **Data Flow for Transformation:** The filtering and remapping logic was assigned to a **Data Flow** activity. This tool was chosen over a simple `Copy Activity` for its ability to handle complex transformations visually and scalably by leveraging the power of a managed Apache Spark cluster.
+  * **Infrastructure as Code (IaC) with Terraform:** The entire Azure infrastructure is defined as code using **Terraform**. This approach ensures the environment is reproducible, versionable, and easily managed, allowing all resources to be created and destroyed with a single command.
 
 -----
 
-## Tecnologie Utilizzate
+## 🛠️ Technologies Used
 
   * **Cloud:** Microsoft Azure
   * **Storage:** Azure Blob Storage
-  * **ETL/Orchestrazione:** Azure Data Factory (ADF)
+  * **ETL/Orchestration:** Azure Data Factory (ADF)
+  * **Infrastructure as Code:** Terraform
+  * **Command-Line Interface:** Azure CLI
 
 -----
 
-## Guida all'Implementazione
+## 🚀 Deployment Guide
 
-### 1\. Setup Manuale dell'Infrastruttura
+### Prerequisites
 
-Per eseguire il progetto, è necessario creare manualmente le seguenti risorse nel portale Azure:
+Before you begin, ensure you have the following tools installed:
 
-1.  Un **Resource Group** per contenere tutte le risorse.
-2.  Un **Azure Storage Account**. All'interno di questo, creare tre **container**:
-      * `input`
-      * `staging`
-      * `output`
-3.  Un'istanza di **Azure Data Factory (V2)**.
+  * An Azure Account with an active subscription.
+  * [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+  * [Terraform](https://developer.hashicorp.com/terraform/tutorials/azure-get-started/install-cli) (version \>= 1.0)
 
-### 2\. Configurazione della Pipeline in ADF
+### 1\. Local Setup & Authentication
 
-All'interno di Azure Data Factory Studio, la pipeline e i suoi componenti (Linked Services, Datasets, Data Flow) devono essere creati e configurati come descritto nella sezione "Architettura". I file JSON esportati dal progetto (`/adf`) rappresentano l'esatta configurazione di ogni componente.
+Clone the repository and log in to your Azure account.
+
+```bash
+git clone <YOUR_REPOSITORY_URL>
+cd <PROJECT_FOLDER_NAME>
+az login
+```
+
+### 2\. Deploy Infrastructure with Terraform
+
+Navigate to the Terraform directory and run the commands to create the Azure resources.
+
+```bash
+cd terraform
+
+# Initialize Terraform to download the necessary providers
+terraform init
+
+# (Optional) Review the execution plan to see what will be created
+terraform plan
+
+# Apply the configuration and create the resources. Type 'yes' when prompted.
+terraform apply
+```
+
+This will create the Resource Group, Storage Account (with `input`, `staging`, and `output` containers), and the Azure Data Factory instance.
+
+### 3\. ADF Pipeline Configuration
+
+The pipeline logic is defined in the ARM template files located in the `/adf` folder. For this project, the pipeline was configured manually in the ADF Studio, but these files represent its configuration and can be used for automated deployments.
 
 -----
 
-## Esecuzione della Pipeline
+## 🏃 Running the Pipeline
 
-1.  **Carica il Dataset di Input:**
+1.  **Upload the Input Dataset:**
 
-      * Dal portale Azure, carica il file `moviesDB.csv` nel container **`input`**.
+      * Upload the `moviesDB.csv` file to the **`input`** container in the newly created Azure Storage Account.
 
-2.  **Avvia la Pipeline:**
+2.  **Trigger the Pipeline:**
 
-      * Apri **ADF Studio**.
-      * Naviga fino alla pipeline principale e clicca su **Debug** per avviare un'esecuzione.
+      * Open the **ADF Studio** from the Azure Portal.
+      * Navigate to your main pipeline and click **Debug** to start a test run.
 
-3.  **Risultato Atteso:**
+3.  **Expected Result:**
 
-      * Al termine dell'esecuzione (visibile nel tab "Monitor"), il container **`output`** conterrà un file CSV. Questo file includerà solo i film con una valutazione superiore a 7 e le colonne `Film`, `Genere`, `Valutazione`.
+      * After the run completes (check the status in the "Monitor" tab), the **`output`** container will contain a new CSV file. This file will include only the movies with a rating higher than 7 and the remapped Italian column names (`Film`, `Genere`, `Valutazione`).
+
+-----
+
+## 🧹 Resource Cleanup
+
+**This step is crucial to avoid any unexpected costs.**
+
+To delete **all** the resources created by this project, run the following command from the `terraform` directory:
+
+```bash
+terraform destroy
+```
+
+Type `yes` when prompted to confirm the deletion.
